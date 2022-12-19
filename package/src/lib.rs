@@ -24,6 +24,8 @@ lazy_static!{
    static ref ENV: Env = load_env();
 }
 
+const MAX_TOKENS: u16 = 4000u16;
+
 struct Env {
     openai_api_key: String
 }
@@ -150,13 +152,15 @@ pub async fn moderation_endpoint(prompt: &str) -> anyhow::Result<Moderation> {
     Ok(moderation)
 }
 
-pub async fn completion_endpoint(prompt: &str) -> anyhow::Result<TextCompletion> {
+pub async fn completion_endpoint(prompt: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
 
     let json_data = serde_json::json!({
                 "model": "text-davinci-003",
                 "prompt": prompt,
-                "max_tokens": 100,
+                "max_tokens": if completion_token_limit > MAX_TOKENS { MAX_TOKENS }else{ completion_token_limit },
                 "temperature": 0,
+                "presence_penalty": 1.25
+                "frequency_penalty": 1.25
                 "top_p": 1,
                 "n": 1,
                 "stop": ["<result","<result>","</result>"]
@@ -185,9 +189,9 @@ pub async fn completion_endpoint(prompt: &str) -> anyhow::Result<TextCompletion>
     Ok(completion)
 }
 
-pub async fn moderated_completion_endpoint(prompt: &str) -> anyhow::Result<TextCompletion> {
+pub async fn moderated_completion_endpoint(prompt: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
     if moderation_endpoint(prompt).await?.results.iter().filter(|x| x.flagged).count() == 0 {
-        let completion = completion_endpoint( prompt).await?;
+        let completion = completion_endpoint(prompt,completion_token_limit).await?;
         if let Some(output) = completion.choices.first().map(|x| x.text.to_owned()){
             if moderation_endpoint(&output).await?.results.iter().filter(|x| x.flagged).count() == 0 {
                 return Ok(completion);
@@ -203,10 +207,10 @@ pub async fn moderated_completion_endpoint(prompt: &str) -> anyhow::Result<TextC
 }
 
 
-pub async fn my_completion_endpoint(input: &str, prompt: &str) -> anyhow::Result<TextCompletion> {
+pub async fn my_completion_endpoint(input: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
 
     let prompt = format!("<proposal>{}</proposal><result description='{}'>",text_pre_processing(input),prompt);
-    let completion = moderated_completion_endpoint(&prompt).await?;
+    let completion = moderated_completion_endpoint(&prompt,completion_token_limit).await?;
 
     // println!("TextCompletion: {:?}",completion);
 

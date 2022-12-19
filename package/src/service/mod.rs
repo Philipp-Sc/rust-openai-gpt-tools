@@ -111,7 +111,7 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
         if rate_limit {
             result = OpenAIGPTSummarizationResult {
                 result:
-                match my_completion_endpoint(request.text.as_str(), request.prompt.as_str()).await {
+                match my_completion_endpoint(request.text.as_str(), request.prompt.as_str(),request.completion_token_limit).await {
                     Ok(completion) => {
                         match RATE_LIMITER.lock() {
                             Ok(ref mut o) => {o.update_rate_limit(completion.usage.total_tokens as u64)}

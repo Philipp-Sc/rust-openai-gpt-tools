@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     println!("env::args().collect(): {:?}",args);
 
     if args.len() <= 1 {
-        my_completion_endpoint(TEST,PROMPTS[1]).await?;
+        my_completion_endpoint(TEST, PROMPTS[1], 100).await?;
         Ok(())
     }else{
         match args[1].as_str() {
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                let result = client_send_openai_gpt_summarization_request("./tmp/rust_openai_gpt_tools_socket",texts[0].to_owned(),PROMPTS[1].to_string())?;
+                let result = client_send_openai_gpt_summarization_request("./tmp/rust_openai_gpt_tools_socket",texts[0].to_owned(),PROMPTS[1].to_string(),100)?;
                 println!("{:?}",result);
                 Ok(())
             }
