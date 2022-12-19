@@ -159,8 +159,8 @@ pub async fn completion_endpoint(prompt: &str, completion_token_limit: u16) -> a
                 "prompt": prompt,
                 "max_tokens": if completion_token_limit > MAX_TOKENS { MAX_TOKENS }else{ completion_token_limit },
                 "temperature": 0,
-                "presence_penalty": 1.25
-                "frequency_penalty": 1.25
+                "presence_penalty": 1.25,
+                "frequency_penalty": 1.25,
                 "top_p": 1,
                 "n": 1,
                 "stop": ["<result","<result>","</result>"]
