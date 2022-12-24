@@ -127,7 +127,7 @@ pub fn text_pre_processing(input: &str) -> String {
     test_string = test_string.split_whitespace().filter(|x| x.len() < 32).collect::<Vec<&str>>().join(" ");
     */
     test_string = test_string.split_whitespace().collect::<Vec<&str>>().join(" ");
-    test_string.chars().take(3000).collect::<String>()
+    test_string.chars().take(4*3000).collect::<String>()
 }
 
 pub async fn moderation_endpoint(prompt: &str) -> anyhow::Result<Moderation> {
@@ -159,8 +159,8 @@ pub async fn completion_endpoint(prompt: &str, completion_token_limit: u16) -> a
                 "prompt": prompt,
                 "max_tokens": if completion_token_limit > MAX_TOKENS { MAX_TOKENS }else{ completion_token_limit },
                 "temperature": 0,
-                "presence_penalty": 1.25,
-                "frequency_penalty": 1.25,
+                "presence_penalty": 1.0,
+                "frequency_penalty": 1.0,
                 "top_p": 1,
                 "n": 1,
                 "stop": ["<result","<result>","</result>"]
