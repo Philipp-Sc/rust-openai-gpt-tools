@@ -127,7 +127,7 @@ pub fn text_pre_processing(input: &str) -> String {
     test_string = test_string.split_whitespace().filter(|x| x.len() < 32).collect::<Vec<&str>>().join(" ");
     */
     test_string = test_string.split_whitespace().collect::<Vec<&str>>().join(" ");
-    test_string.chars().take(4*3000).collect::<String>()
+    test_string.chars().take(4*3500).collect::<String>()
 }
 
 pub async fn moderation_endpoint(prompt: &str) -> anyhow::Result<Moderation> {
