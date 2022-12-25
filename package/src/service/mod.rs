@@ -1,5 +1,5 @@
 use std::sync::{Arc, LockResult, Mutex};
-use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTSummarizationRequest, OpenAIGPTSummarizationResult};
+use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTTextCompletionRequest, OpenAIGPTTextCompletionResult};
 use rust_openai_gpt_tools_socket_ipc::ipc::socket::{spawn_socket_service};
 use crate::{my_completion_endpoint, TextCompletion};
 use async_trait::async_trait;
@@ -96,22 +96,22 @@ pub fn spawn_openai_gpt_summarization_socket_service(socket_path: &str) -> JoinH
 
 pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
 
-    let request: OpenAIGPTSummarizationRequest = bytes.try_into()?;
+    let request: OpenAIGPTTextCompletionRequest = bytes.try_into()?;
 
     let hash = request.get_hash();
 
     let result;
     if TEXT_COMPLETION_STORE.contains_hash(hash)? {
-        result = TEXT_COMPLETION_STORE.get_item_by_hash::<OpenAIGPTSummarizationResult>(hash)?.unwrap();
+        result = TEXT_COMPLETION_STORE.get_item_by_hash::<OpenAIGPTTextCompletionResult>(hash)?.unwrap();
     } else {
         let rate_limit = match RATE_LIMITER.lock() {
             Ok(ref mut o) => {o.rate_limit()}
             Err(_) => {false}
         };
         if rate_limit {
-            result = OpenAIGPTSummarizationResult {
+            result = OpenAIGPTTextCompletionResult {
                 result:
-                match my_completion_endpoint(request.text.as_str(), request.prompt.as_str(),request.completion_token_limit).await {
+                match my_completion_endpoint(request.prompt.as_str(),request.completion_token_limit).await {
                     Ok(completion) => {
                         match RATE_LIMITER.lock() {
                             Ok(ref mut o) => {o.update_rate_limit(completion.usage.total_tokens as u64)}

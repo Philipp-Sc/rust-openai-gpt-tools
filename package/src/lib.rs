@@ -113,21 +113,7 @@ pub fn get_link_finder() -> LinkFinder {
 }
 
 pub fn text_pre_processing(input: &str) -> String {
-    let re = Regex::new(r"\n").unwrap();
-    let mut test_string = re.replace_all(input, " ").to_string();
-
-    //let re = Regex::new(r"\s+").unwrap();
-    //test_string = re.replace_all(&test_string, " ").to_string();
-
-    /*
-    for link in LINK_FINDER.links(&test_string.to_owned()) {
-        let l = link.as_str();
-        test_string = test_string.replace(l, "link_removed");
-    }
-    test_string = test_string.split_whitespace().filter(|x| x.len() < 32).collect::<Vec<&str>>().join(" ");
-    */
-    test_string = test_string.split_whitespace().collect::<Vec<&str>>().join(" ");
-    test_string.chars().take(4*3500).collect::<String>()
+    input.chars().take(4*4000).collect::<String>()
 }
 
 pub async fn moderation_endpoint(prompt: &str) -> anyhow::Result<Moderation> {
@@ -207,9 +193,9 @@ pub async fn moderated_completion_endpoint(prompt: &str, completion_token_limit:
 }
 
 
-pub async fn my_completion_endpoint(input: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
+pub async fn my_completion_endpoint(input: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
 
-    let prompt = format!("<proposal>{}</proposal><result description='{}'>",text_pre_processing(input),prompt);
+    let prompt = ,text_pre_processing(input);
     let completion = moderated_completion_endpoint(&prompt,completion_token_limit).await?;
 
     // println!("TextCompletion: {:?}",completion);
