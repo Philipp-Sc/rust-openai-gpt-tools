@@ -195,7 +195,7 @@ pub async fn moderated_completion_endpoint(prompt: &str, completion_token_limit:
 
 pub async fn my_completion_endpoint(input: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
 
-    let prompt = ,text_pre_processing(input);
+    let prompt = text_pre_processing(input);
     let completion = moderated_completion_endpoint(&prompt,completion_token_limit).await?;
 
     // println!("TextCompletion: {:?}",completion);
