@@ -86,7 +86,7 @@ pub fn load_store(path: &str) -> HashValueStore {
 }
 
 
-pub fn spawn_openai_gpt_summarization_socket_service(socket_path: &str) -> JoinHandle<()> {
+pub fn spawn_openai_gpt_text_completion_socket_service(socket_path: &str) -> JoinHandle<()> {
     println!("spawn_socket_service startup");
     let task = spawn_socket_service(socket_path,|bytes| { process(bytes)
     });
