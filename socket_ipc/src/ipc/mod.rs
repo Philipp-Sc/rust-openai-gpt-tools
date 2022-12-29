@@ -64,14 +64,30 @@ pub enum OpenAIGPTResult {
 impl TryFrom<Vec<u8>> for OpenAIGPTResult {
     type Error = anyhow::Error;
     fn try_from(item: Vec<u8>) -> anyhow::Result<Self> {
-        Ok(bincode::deserialize(&item[..])?)
+        match bincode::deserialize(&item[..]) {
+            Ok(o) => {
+                Ok(o)
+            },
+            Err(err) => {
+                println!("Error: {:?}",err.to_string());
+                Err(anyhow::anyhow!(err))
+            }
+        }
     }
 }
 
 impl TryFrom<OpenAIGPTResult> for Vec<u8> {
     type Error = anyhow::Error;
     fn try_from(item: OpenAIGPTResult) -> anyhow::Result<Self> {
-        Ok(bincode::serialize(&item)?)
+        match bincode::serialize(&item) {
+            Ok(o) => {
+                Ok(o)
+            },
+            Err(err) => {
+                println!("Error: {:?}",err.to_string());
+                Err(anyhow::anyhow!(err))
+            }
+        }
     }
 }
 
