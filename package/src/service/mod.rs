@@ -1,7 +1,7 @@
 use std::sync::{Arc, LockResult, Mutex};
-use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTTextCompletionRequest, OpenAIGPTTextCompletionResult};
+use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTEmbeddingResult, OpenAIGPTRequest, OpenAIGPTResult, OpenAIGPTTextCompletionRequest, OpenAIGPTTextCompletionResult};
 use rust_openai_gpt_tools_socket_ipc::ipc::socket::{spawn_socket_service};
-use crate::{my_completion_endpoint, TextCompletion};
+use crate::{my_completion_endpoint, my_embedding_endpoint, TextCompletion};
 use async_trait::async_trait;
 use tokio::task::JoinHandle;
 
@@ -12,7 +12,7 @@ use crate::cache::HashValueStore;
 use std::time::{Instant, Duration};
 
 lazy_static!{
-   static ref TEXT_COMPLETION_STORE: HashValueStore = load_store("./tmp/rust_openai_gpt_tools_sled_db");
+   static ref OPENAI_GPT_RESULT_STORE: HashValueStore = load_store("./tmp/rust_openai_gpt_tools_sled_db");
    static ref RATE_LIMITER: Arc<Mutex<RateLimiter>> = Arc::new(Mutex::new(load_rate_limiter()));
 }
 
@@ -73,7 +73,6 @@ pub fn load_rate_limiter() -> RateLimiter {
     RateLimiter::new(max_tokens.trunc() as u64,Duration::from_secs(one_month))
 }
 
-
 pub fn load_store(path: &str) -> HashValueStore {
     let db: sled::Db = sled::Config::default()
         .path(path)
@@ -85,8 +84,7 @@ pub fn load_store(path: &str) -> HashValueStore {
     HashValueStore::new(&db)
 }
 
-
-pub fn spawn_openai_gpt_text_completion_socket_service(socket_path: &str) -> JoinHandle<()> {
+pub fn spawn_openai_gpt_api_socket_service(socket_path: &str) -> JoinHandle<()> {
     println!("spawn_socket_service startup");
     let task = spawn_socket_service(socket_path,|bytes| { process(bytes)
     });
@@ -96,41 +94,62 @@ pub fn spawn_openai_gpt_text_completion_socket_service(socket_path: &str) -> Joi
 
 pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
 
-    let request: OpenAIGPTTextCompletionRequest = bytes.try_into()?;
+    let request: OpenAIGPTRequest = bytes.try_into()?;
 
     let hash = request.get_hash();
 
     let result;
-    if TEXT_COMPLETION_STORE.contains_hash(hash)? {
-        result = TEXT_COMPLETION_STORE.get_item_by_hash::<OpenAIGPTTextCompletionResult>(hash)?.unwrap();
+
+    if OPENAI_GPT_RESULT_STORE.contains_hash(hash)? {
+        result = OPENAI_GPT_RESULT_STORE.get_item_by_hash::<OpenAIGPTResult>(hash)?.unwrap();
     } else {
         let rate_limit = match RATE_LIMITER.lock() {
-            Ok(ref mut o) => {o.rate_limit()}
-            Err(_) => {false}
+            Ok(ref mut o) => { o.rate_limit() }
+            Err(_) => { false }
         };
         if rate_limit {
-            result = OpenAIGPTTextCompletionResult {
-                result:
-                match my_completion_endpoint(request.prompt.as_str(),request.completion_token_limit).await {
-                    Ok(completion) => {
-                        match RATE_LIMITER.lock() {
-                            Ok(ref mut o) => {o.update_rate_limit(completion.usage.total_tokens as u64)}
-                            Err(_) => {panic!()}
-                        };
-                        completion.choices.first().map(|x| x.text.to_owned()).unwrap_or("".to_string())
-                    }
-                    Err(err) => {
-                        return Err(anyhow::anyhow!(err.to_string()));
-                    }
-                },
-                request: request,
-            };
-
-        }else{
-            return Err(anyhow::anyhow!("Error: Rate Exceeded!"));
+            match request {
+                OpenAIGPTRequest::TextCompletionRequest(request) => {
+                    result = OpenAIGPTResult::TextCompletionResult(OpenAIGPTTextCompletionResult {
+                        result:
+                        match my_completion_endpoint(request.prompt.as_str(), request.completion_token_limit).await {
+                            Ok(completion) => {
+                                match RATE_LIMITER.lock() {
+                                    Ok(ref mut o) => { o.update_rate_limit(completion.usage.total_tokens as u64) }
+                                    Err(_) => { panic!() }
+                                };
+                                completion.choices.first().map(|x| x.text.to_owned()).unwrap_or("".to_string())
+                            }
+                            Err(err) => {
+                                return Err(anyhow::anyhow!(err.to_string()));
+                            }
+                        },
+                        request: request,
+                    });
+                }
+                OpenAIGPTRequest::EmbeddingRequest(request) => {
+                    result = OpenAIGPTResult::EmbeddingResult(OpenAIGPTEmbeddingResult {
+                        result:
+                        match my_embedding_endpoint(request.texts.clone()).await {
+                            Ok(embedding_data) => {
+                                match RATE_LIMITER.lock() {
+                                    Ok(ref mut o) => { o.update_rate_limit(embedding_data.usage.total_tokens as u64) }
+                                    Err(_) => { panic!() }
+                                };
+                                embedding_data.data.into_iter().map(|x| x.embedding).collect::<Vec<Vec<f32>>>()
+                            }
+                            Err(err) => {
+                                return Err(anyhow::anyhow!(err.to_string()));
+                            }
+                        },
+                        request: request,
+                    });
+                }
+            }
+            OPENAI_GPT_RESULT_STORE.insert_item(hash, result.clone()).ok();
+        }else {
+                return Err(anyhow::anyhow!("Error: Rate Exceeded!"));
         }
-        TEXT_COMPLETION_STORE.insert_item(hash,result.clone()).ok();
-
     };
 
     let into_bytes: Vec<u8> = result.try_into()?;

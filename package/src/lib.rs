@@ -30,6 +30,26 @@ struct Env {
     openai_api_key: String
 }
 
+// EMBEDDING
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct Embedding {
+    object: String,
+    index: u32,
+    embedding: Vec<f32>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct EmbeddingData {
+    object: String,
+    data: Vec<Embedding>,
+    model: String,
+    usage: Usage,
+}
+
+
+// TEXT COMPLETION
+
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct TextCompletion {
     id: String,
@@ -164,14 +184,6 @@ pub async fn completion_endpoint(prompt: &str, completion_token_limit: u16) -> a
 
     let completion = response?.json::<TextCompletion>().await?;
 
-    /*
-    if let Some(ref mut completion) = &mut response {
-        for i in 0..completion.choices.len(){
-            completion.choices[i].text = completion.choices[i].text.replace("</summary>","").replace("<summary>","");
-        }
-    }*/
-
-    // println!("TextCompletion: {:?}",completion);
     Ok(completion)
 }
 
@@ -201,4 +213,23 @@ pub async fn my_completion_endpoint(input: &str, completion_token_limit: u16) ->
     // println!("TextCompletion: {:?}",completion);
 
     Ok(completion)
+}
+pub async fn my_embedding_endpoint(texts: Vec<String>) -> anyhow::Result<EmbeddingData> {
+
+    let json_data = serde_json::json!({
+        "input": texts,
+        "model": "text-embedding-ada-002"
+    });
+
+    let client = Client::new();
+    let url = "https://api.openai.com/v1/embeddings";
+    let response = client.post(url)
+        .bearer_auth(&ENV.openai_api_key)
+        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+        .body(json_data.to_string())
+        .send().await;
+
+    let embedding = response?.json::<EmbeddingData>().await?;
+
+    Ok(embedding)
 }
