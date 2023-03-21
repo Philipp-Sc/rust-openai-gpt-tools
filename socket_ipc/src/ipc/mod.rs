@@ -8,12 +8,12 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub fn client_send_openai_gpt_text_completion_request(socket_path: &str, prompt: String, completion_token_limit: u16) -> anyhow::Result<OpenAIGPTResult> {
-    println!("client_send_request initiating");
+    println!("Initiating OpenAI GPT text completion request for prompt: '{}'",  &prompt[..50]);
     client_send_request(socket_path, OpenAIGPTRequest::TextCompletionRequest(OpenAIGPTTextCompletionRequest {prompt,completion_token_limit}))
 }
 
 pub fn client_send_openai_gpt_embedding_request(socket_path: &str, texts: Vec<String>) -> anyhow::Result<OpenAIGPTResult> {
-    println!("client_send_request initiating");
+    println!("Initiating OpenAI GPT embedding request for {} texts", texts.len());
     client_send_request(socket_path, OpenAIGPTRequest::EmbeddingRequest(OpenAIGPTEmbeddingRequest {texts}))
 }
 
