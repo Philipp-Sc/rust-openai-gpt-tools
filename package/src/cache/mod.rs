@@ -72,12 +72,12 @@ impl SledStore {
             .insert(key.as_ref(), value)?;
         Ok(())
     }
-
+/*
     fn remove<S>(&self, key: S) -> anyhow::Result<Option<sled::IVec>>
         where
             S: AsRef<Vec<u8>>,
     {
         Ok(self.db.remove(key.as_ref())?)
     }
-
+*/
 }

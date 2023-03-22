@@ -2,10 +2,15 @@ use serde::{Deserialize, Serialize};
 
 pub mod socket;
 
-use socket::{client_send_request, spawn_socket_service};
+use socket::{client_send_request};
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+pub fn client_send_openai_gpt_chat_completion_request(socket_path: &str, system: String, prompt: String, completion_token_limit: u16) -> anyhow::Result<OpenAIGPTResult> {
+    println!("Initiating OpenAI GPT chat completion request for (system,prompt): '{:?}'",  (&system[..50], &prompt[..50]));
+    client_send_request(socket_path, OpenAIGPTRequest::ChatCompletionRequest(OpenAIGPTChatCompletionRequest {system,prompt,completion_token_limit}))
+}
 
 pub fn client_send_openai_gpt_text_completion_request(socket_path: &str, prompt: String, completion_token_limit: u16) -> anyhow::Result<OpenAIGPTResult> {
     println!("Initiating OpenAI GPT text completion request for prompt: '{}'",  &prompt[..50]);
@@ -19,6 +24,7 @@ pub fn client_send_openai_gpt_embedding_request(socket_path: &str, texts: Vec<St
 
 #[derive(Serialize,Deserialize,Debug,Hash,Clone)]
 pub enum OpenAIGPTRequest {
+    ChatCompletionRequest(OpenAIGPTChatCompletionRequest),
     TextCompletionRequest(OpenAIGPTTextCompletionRequest),
     EmbeddingRequest(OpenAIGPTEmbeddingRequest)
 }
@@ -45,6 +51,13 @@ impl TryFrom<OpenAIGPTRequest> for Vec<u8> {
 }
 
 #[derive(Serialize,Deserialize,Debug,Hash,Clone)]
+pub struct OpenAIGPTChatCompletionRequest {
+    pub system: String,
+    pub prompt: String,
+    pub completion_token_limit: u16,
+}
+
+#[derive(Serialize,Deserialize,Debug,Hash,Clone)]
 pub struct OpenAIGPTTextCompletionRequest {
     pub prompt: String,
     pub completion_token_limit: u16,
@@ -57,6 +70,7 @@ pub struct OpenAIGPTEmbeddingRequest {
 
 #[derive(Serialize,Deserialize,Debug,Hash,Clone)]
 pub enum OpenAIGPTResult {
+    ChatCompletionResult(OpenAIGPTChatCompletionResult),
     TextCompletionResult(OpenAIGPTTextCompletionResult),
     EmbeddingResult(OpenAIGPTEmbeddingResult)
 }
@@ -91,6 +105,12 @@ impl TryFrom<OpenAIGPTResult> for Vec<u8> {
     }
 }
 
+
+#[derive(Serialize,Deserialize,Debug,Hash,Clone)]
+pub struct OpenAIGPTChatCompletionResult {
+    pub result: String,
+    pub request: OpenAIGPTChatCompletionRequest,
+}
 
 #[derive(Serialize,Deserialize,Debug,Hash,Clone)]
 pub struct OpenAIGPTTextCompletionResult {

@@ -1,8 +1,11 @@
-use std::sync::{Arc, LockResult, Mutex};
-use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTEmbeddingResult, OpenAIGPTRequest, OpenAIGPTResult, OpenAIGPTTextCompletionRequest, OpenAIGPTTextCompletionResult};
+use std::sync::{Arc, Mutex};
+use rust_openai_gpt_tools_socket_ipc::ipc::{OpenAIGPTChatCompletionResult, OpenAIGPTEmbeddingResult, OpenAIGPTRequest, OpenAIGPTResult, OpenAIGPTTextCompletionResult};
 use rust_openai_gpt_tools_socket_ipc::ipc::socket::{spawn_socket_service};
-use crate::{my_completion_endpoint, my_embedding_endpoint, TextCompletion};
-use async_trait::async_trait;
+use crate::text_completion::{completion_endpoint, TextCompletion};
+use crate::chat_completion::{chat_completion_endpoint, ChatCompletion};
+use crate::embedding::{embedding_endpoint};
+use crate::moderation::{moderation_endpoint};
+
 use tokio::task::JoinHandle;
 
 
@@ -16,21 +19,26 @@ lazy_static!{
    static ref RATE_LIMITER: Arc<Mutex<RateLimiter>> = Arc::new(Mutex::new(load_rate_limiter()));
 }
 
+pub const DAVINCI_PRICE_PER_1K_TOKEN: f64 = 0.02;
+pub const GPT_3_5_TURBO_PRICE_PER_1K_TOKEN: f64 = 0.002;
+pub const ADA_EMBEDDING_PRICE_PER_1K_TOKEN: f64 = 0.0004;
+
+
 
 #[derive(Debug)]
 pub struct RateLimiter {
-    limit: u64,
+    max_costs: f64,
     duration: Duration,
-    counter: u64,
+    remaining_budget: f64,
     last_check: Instant,
 }
 
 impl RateLimiter {
-    fn new(limit: u64, duration: Duration) -> Self {
+    fn new(max_costs: f64, duration: Duration) -> Self {
         RateLimiter {
-            limit,
+            max_costs,
             duration,
-            counter: 0,
+            remaining_budget: max_costs,
             last_check: Instant::now(),
         }
     }
@@ -38,39 +46,32 @@ impl RateLimiter {
     fn rate_limit(&mut self) -> bool {
         let now = Instant::now();
         if now.duration_since(self.last_check) > self.duration {
-            self.counter = 0;
+            self.remaining_budget = self.max_costs;
             self.last_check = now;
         }
         println!("{:?}",&self);
-        self.counter <= self.limit
+        self.remaining_budget > 0.0
     }
 
-    fn update_rate_limit(&mut self, tokens_used: u64) {
-        self.counter += tokens_used;
+    fn update_rate_limit(&mut self, tokens_used: u64, price_for_1k_token: f64) {
+        self.remaining_budget -= (tokens_used as f64 *price_for_1k_token)/1000.0;
         println!("{:?}",&self);
     }
 }
 
 
 pub fn load_rate_limiter() -> RateLimiter {
-    // Davinci:  $0.0200  / 1K tokens
-    let price_per_token = 0.02;
-    let per_token_amount = 1000.0;
-
     // 25$ my upper price limit
     let max_costs = 25.0;
-    // calculated upper token limit
-    let max_tokens: f64 = (max_costs / price_per_token) * per_token_amount;
-
     let one_month = 60*60*24*30;
 
-    println!("price_per_token: ${}",price_per_token);
-    println!("per_token_amount: {}",per_token_amount);
+    println!("TextCompletion: price_per_1k_token: ${}",DAVINCI_PRICE_PER_1K_TOKEN);
+    println!("ChatCompletion: price_per_1k_token: ${}",GPT_3_5_TURBO_PRICE_PER_1K_TOKEN);
+    println!("Embedding: price_per_1k_token: ${}",ADA_EMBEDDING_PRICE_PER_1K_TOKEN);
     println!("max_costs: ${}",max_costs);
-    println!("max_tokens: {}",max_tokens);
     println!("one_month: {} seconds",one_month);
 
-    RateLimiter::new(max_tokens.trunc() as u64,Duration::from_secs(one_month))
+    RateLimiter::new(max_costs,Duration::from_secs(one_month))
 }
 
 pub fn load_store(path: &str) -> HashValueStore {
@@ -85,12 +86,48 @@ pub fn load_store(path: &str) -> HashValueStore {
 }
 
 pub fn spawn_openai_gpt_api_socket_service(socket_path: &str) -> JoinHandle<()> {
-    println!("spawn_socket_service startup");
+    println!("Starting OpenAI GPT API socket service at '{}'", socket_path);
     let task = spawn_socket_service(socket_path,|bytes| { process(bytes)
     });
-    println!("spawn_socket_service ready");
+    println!("OpenAI GPT API socket service ready and listening for incoming connections.");
     task
 }
+
+
+pub async fn moderated_text_completion_endpoint(prompt: &str, completion_token_limit: u16) -> anyhow::Result<TextCompletion> {
+    if moderation_endpoint(prompt).await?.results.iter().filter(|x| x.flagged).count() == 0 {
+        let completion = completion_endpoint(prompt,completion_token_limit).await?;
+        if let Some(output) = completion.choices.first().map(|x| x.text.to_owned()){
+            if super::moderation::moderation_endpoint(&output).await?.results.iter().filter(|x| x.flagged).count() == 0 {
+                return Ok(completion);
+            }else{
+                Err(anyhow::anyhow!("Error: TextCompletion result unsafe!"))
+            }
+        }else{
+            Err(anyhow::anyhow!("Error: TextCompletion empty!"))
+        }
+    }else{
+        Err(anyhow::anyhow!("Error: TextCompletion prompt unsafe!"))
+    }
+}
+
+pub async fn moderated_chat_completion_endpoint(system: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<ChatCompletion> {
+    if moderation_endpoint(prompt).await?.results.iter().filter(|x| x.flagged).count() == 0 {
+        let completion = chat_completion_endpoint(system, prompt, completion_token_limit).await?;
+        if let Some(output) = completion.choices.first().map(|x| x.message.content.to_owned()){
+            if super::moderation::moderation_endpoint(&output).await?.results.iter().filter(|x| x.flagged).count() == 0 {
+                return Ok(completion);
+            }else{
+                Err(anyhow::anyhow!("Error: ChatCompletion result unsafe!"))
+            }
+        }else{
+            Err(anyhow::anyhow!("Error: ChatCompletion empty!"))
+        }
+    }else{
+        Err(anyhow::anyhow!("Error: ChatCompletion prompt unsafe!"))
+    }
+}
+
 
 pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
 
@@ -109,13 +146,31 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
         };
         if rate_limit {
             match request {
+                OpenAIGPTRequest::ChatCompletionRequest(request) => {
+                    result = OpenAIGPTResult::ChatCompletionResult(OpenAIGPTChatCompletionResult {
+                        result:
+                        match moderated_chat_completion_endpoint(request.system.as_str(),request.prompt.as_str(), request.completion_token_limit).await {
+                            Ok(completion) => {
+                                match RATE_LIMITER.lock() {
+                                    Ok(ref mut o) => { o.update_rate_limit(completion.usage.total_tokens as u64,GPT_3_5_TURBO_PRICE_PER_1K_TOKEN) }
+                                    Err(_) => { panic!() }
+                                };
+                                completion.choices.first().map(|x| x.message.content.to_owned()).unwrap_or("".to_string())
+                            }
+                            Err(err) => {
+                                return Err(anyhow::anyhow!(err.to_string()));
+                            }
+                        },
+                        request: request,
+                    });
+                }
                 OpenAIGPTRequest::TextCompletionRequest(request) => {
                     result = OpenAIGPTResult::TextCompletionResult(OpenAIGPTTextCompletionResult {
                         result:
-                        match my_completion_endpoint(request.prompt.as_str(), request.completion_token_limit).await {
+                        match moderated_text_completion_endpoint(request.prompt.as_str(), request.completion_token_limit).await {
                             Ok(completion) => {
                                 match RATE_LIMITER.lock() {
-                                    Ok(ref mut o) => { o.update_rate_limit(completion.usage.total_tokens as u64) }
+                                    Ok(ref mut o) => { o.update_rate_limit(completion.usage.total_tokens as u64,DAVINCI_PRICE_PER_1K_TOKEN) }
                                     Err(_) => { panic!() }
                                 };
                                 completion.choices.first().map(|x| x.text.to_owned()).unwrap_or("".to_string())
@@ -130,10 +185,10 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
                 OpenAIGPTRequest::EmbeddingRequest(request) => {
                     result = OpenAIGPTResult::EmbeddingResult(OpenAIGPTEmbeddingResult {
                         result:
-                        match my_embedding_endpoint(request.texts.clone()).await {
+                        match embedding_endpoint(request.texts.clone()).await {
                             Ok(embedding_data) => {
                                 match RATE_LIMITER.lock() {
-                                    Ok(ref mut o) => { o.update_rate_limit(embedding_data.usage.total_tokens as u64) }
+                                    Ok(ref mut o) => { o.update_rate_limit(embedding_data.usage.total_tokens as u64,ADA_EMBEDDING_PRICE_PER_1K_TOKEN) }
                                     Err(_) => { panic!() }
                                 };
                                 embedding_data.data.into_iter().map(|x| x.embedding).collect::<Vec<Vec<f32>>>()

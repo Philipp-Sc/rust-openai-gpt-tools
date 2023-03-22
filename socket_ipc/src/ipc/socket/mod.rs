@@ -1,9 +1,7 @@
 use anyhow::Context;
-use std::collections::HashSet;
 use std::os::unix::net::{UnixListener,UnixStream};
 use std::io::{Read, Write};
 use serde::{Deserialize, Serialize};
-use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use core::future::Future;
 
@@ -35,7 +33,7 @@ pub fn spawn_socket_service<F,T>(socket_path: &str, handler: F) -> JoinHandle<()
                     .context("Failed at accepting a connection on the unix listener")
                     .unwrap();
 
-                handle_stream(unix_stream, &handler).await;
+                handle_stream(unix_stream, &handler).await.ok();
             }
         }
     })
