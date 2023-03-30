@@ -25,10 +25,10 @@ pub struct Message {
     pub content: String,
 }
 
-pub async fn chat_completion_endpoint(system: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<ChatCompletion> {
+pub async fn chat_completion_endpoint(model_name: &str, system: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<ChatCompletion> {
 
     let json_data = serde_json::json!({
-                "model": "gpt-3.5-turbo",
+                "model": model_name, // "gpt-3.5-turbo", "gpt-4"
                 "messages": [{"role": "system", "content": system},{"role": "user", "content": prompt}],
                 "max_tokens": if completion_token_limit > super::MAX_TOKENS { super::MAX_TOKENS }else{ completion_token_limit },
                 "temperature": 0,

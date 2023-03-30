@@ -20,8 +20,8 @@ pub struct EmbeddingData {
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Usage {
-    prompt_tokens: i64,
-    completion_tokens: Option<i64>,
+    pub prompt_tokens: i64,
+    pub completion_tokens: Option<i64>,
     pub total_tokens: i64,
 }
 

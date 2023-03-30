@@ -19,6 +19,11 @@ lazy_static!{
    static ref RATE_LIMITER: Arc<Mutex<RateLimiter>> = Arc::new(Mutex::new(load_rate_limiter()));
 }
 
+pub const GPT_4_8K_PRICE_PER_1K_TOKEN_COMPLETION: f64 = 0.06;
+pub const GPT_4_8K_PRICE_PER_1K_TOKEN_PROMPT: f64 = 0.03;
+pub const GPT_4_32K_PRICE_PER_1K_TOKEN_COMPLETION: f64 = 0.12;
+pub const GPT_4_32K_PRICE_PER_1K_TOKEN_PROMPT: f64 = 0.06;
+
 pub const DAVINCI_PRICE_PER_1K_TOKEN: f64 = 0.02;
 pub const GPT_3_5_TURBO_PRICE_PER_1K_TOKEN: f64 = 0.002;
 pub const ADA_EMBEDDING_PRICE_PER_1K_TOKEN: f64 = 0.0004;
@@ -65,9 +70,14 @@ pub fn load_rate_limiter() -> RateLimiter {
     let max_costs = 25.0;
     let one_month = 60*60*24*30;
 
-    println!("TextCompletion: price_per_1k_token: ${}",DAVINCI_PRICE_PER_1K_TOKEN);
-    println!("ChatCompletion: price_per_1k_token: ${}",GPT_3_5_TURBO_PRICE_PER_1K_TOKEN);
     println!("Embedding: price_per_1k_token: ${}",ADA_EMBEDDING_PRICE_PER_1K_TOKEN);
+    println!("TextCompletion: price_per_1k_token: ${}",DAVINCI_PRICE_PER_1K_TOKEN);
+    println!("ChatCompletion/GPT-3.5-turbo: price_per_1k_token: ${}",GPT_3_5_TURBO_PRICE_PER_1K_TOKEN);
+    println!("ChatCompletion/GPT-4_8k: price_per_1k_token (prompt): ${}",GPT_4_8K_PRICE_PER_1K_TOKEN_PROMPT);
+    println!("ChatCompletion/GPT-4_8k: price_per_1k_token (completion): ${}",GPT_4_8K_PRICE_PER_1K_TOKEN_COMPLETION);
+    println!("ChatCompletion/GPT-4_32k: price_per_1k_token (prompt): ${}",GPT_4_32K_PRICE_PER_1K_TOKEN_PROMPT);
+    println!("ChatCompletion/GPT-4_32k: price_per_1k_token (completion): ${}",GPT_4_32K_PRICE_PER_1K_TOKEN_COMPLETION);
+
     println!("max_costs: ${}",max_costs);
     println!("one_month: {} seconds",one_month);
 
@@ -111,9 +121,9 @@ pub async fn moderated_text_completion_endpoint(prompt: &str, completion_token_l
     }
 }
 
-pub async fn moderated_chat_completion_endpoint(system: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<ChatCompletion> {
+pub async fn moderated_chat_completion_endpoint(model_name: &str, system: &str, prompt: &str, completion_token_limit: u16) -> anyhow::Result<ChatCompletion> {
     if moderation_endpoint(prompt).await?.results.iter().filter(|x| x.flagged).count() == 0 {
-        let completion = chat_completion_endpoint(system, prompt, completion_token_limit).await?;
+        let completion = chat_completion_endpoint(model_name, system, prompt, completion_token_limit).await?;
         if let Some(output) = completion.choices.first().map(|x| x.message.content.to_owned()){
             if super::moderation::moderation_endpoint(&output).await?.results.iter().filter(|x| x.flagged).count() == 0 {
                 return Ok(completion);
@@ -149,10 +159,27 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
                 OpenAIGPTRequest::ChatCompletionRequest(request) => {
                     result = OpenAIGPTResult::ChatCompletionResult(OpenAIGPTChatCompletionResult {
                         result:
-                        match moderated_chat_completion_endpoint(request.system.as_str(),request.prompt.as_str(), request.completion_token_limit).await {
+                        match moderated_chat_completion_endpoint(request.model_name.as_str(),request.system.as_str(),request.prompt.as_str(), request.completion_token_limit).await {
                             Ok(completion) => {
                                 match RATE_LIMITER.lock() {
-                                    Ok(ref mut o) => { o.update_rate_limit(completion.usage.total_tokens as u64,GPT_3_5_TURBO_PRICE_PER_1K_TOKEN) }
+                                    Ok(ref mut o) => {
+                                        match request.model_name.as_str() {
+                                            "gpt-4" => {
+                                                o.update_rate_limit(completion.usage.prompt_tokens as u64,GPT_4_8K_PRICE_PER_1K_TOKEN_PROMPT);
+                                                o.update_rate_limit(completion.usage.completion_tokens.unwrap_or(0i64) as u64,GPT_4_8K_PRICE_PER_1K_TOKEN_COMPLETION);
+                                            },
+                                            "gpt-4-32k" => {
+                                                o.update_rate_limit(completion.usage.prompt_tokens as u64,GPT_4_32K_PRICE_PER_1K_TOKEN_PROMPT);
+                                                o.update_rate_limit(completion.usage.completion_tokens.unwrap_or(0i64) as u64,GPT_4_32K_PRICE_PER_1K_TOKEN_COMPLETION);
+                                            },
+                                            "gpt-3.5-turbo" => {
+                                                o.update_rate_limit(completion.usage.total_tokens as u64,GPT_3_5_TURBO_PRICE_PER_1K_TOKEN)
+                                            },
+                                            _ => {
+                                                panic!()
+                                            }
+                                        }
+                                    }
                                     Err(_) => { panic!() }
                                 };
                                 completion.choices.first().map(|x| x.message.content.to_owned()).unwrap_or("".to_string())

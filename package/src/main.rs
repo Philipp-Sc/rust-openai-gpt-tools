@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
                 [1]: https://TerraPro.at
                     [2]: https://v2Terra.de</source>\n\n<result>let brief_overview: &str  = r#\"
                 */
-                let result = client_send_openai_gpt_chat_completion_request("./tmp/rust_openai_gpt_tools_socket", "You are Cosmos Rust Bot.
+                let result = client_send_openai_gpt_chat_completion_request("./tmp/rust_openai_gpt_tools_socket", "gpt-4".to_string(),"You are Cosmos Rust Bot.
 Featuring:
 - an fraud detection (state of the art), warning users about scams or malicious content, censoring dangerous links/URLs.
 Attributes:
