@@ -87,11 +87,12 @@ pub fn load_rate_limiter() -> RateLimiter {
 pub fn load_store(path: &str) -> HashValueStore {
     let db: sled::Db = sled::Config::default()
         .path(path)
-        .cache_capacity(1024 * 1024 * 1024 / 2)
-        .use_compression(true)
-        .compression_factor(22)
-        .flush_every_ms(Some(1000))
-        .open().unwrap();
+        .cache_capacity( 1024 * 1024 * 1024) // 1gb
+        //.use_compression(true)
+        //.compression_factor(22)
+        .flush_every_ms(Some(100))
+        .open()
+        .unwrap();
     HashValueStore::new(&db)
 }
 
